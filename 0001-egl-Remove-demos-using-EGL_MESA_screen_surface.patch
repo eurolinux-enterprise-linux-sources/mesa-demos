@@ -1,0 +1,264 @@
+diff -up mesa-demos-8.2.0/src/egl/eglut/eglut.c.jx mesa-demos-8.2.0/src/egl/eglut/eglut.c
+--- mesa-demos-8.2.0/src/egl/eglut/eglut.c.jx	2012-06-25 11:34:58.000000000 -0400
++++ mesa-demos-8.2.0/src/egl/eglut/eglut.c	2016-04-27 13:36:48.089527063 -0400
+@@ -76,8 +76,7 @@ _eglutNow(void)
+ static void
+ _eglutDestroyWindow(struct eglut_window *win)
+ {
+-   if (_eglut->surface_type != EGL_PBUFFER_BIT &&
+-       _eglut->surface_type != EGL_SCREEN_BIT_MESA)
++   if (_eglut->surface_type != EGL_PBUFFER_BIT)
+       eglDestroySurface(_eglut->dpy, win->surface);
+ 
+    _eglutNativeFiniWindow(win);
+@@ -175,7 +174,6 @@ _eglutCreateWindow(const char *title, in
+             win->config, win->native.u.pixmap, NULL);
+       break;
+    case EGL_PBUFFER_BIT:
+-   case EGL_SCREEN_BIT_MESA:
+       win->surface = win->native.u.surface;
+       break;
+    default:
+@@ -289,9 +287,7 @@ eglutDestroyWindow(int win)
+    if (window->index != win)
+       return;
+ 
+-   /* XXX it causes some bug in st/egl KMS backend */
+-   if ( _eglut->surface_type != EGL_SCREEN_BIT_MESA)
+-      eglMakeCurrent(_eglut->dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
++   eglMakeCurrent(_eglut->dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+ 
+    _eglutDestroyWindow(_eglut->current);
+ }
+diff -up mesa-demos-8.2.0/src/egl/eglut/eglut_screen.c.jx mesa-demos-8.2.0/src/egl/eglut/eglut_screen.c
+diff -up mesa-demos-8.2.0/src/egl/eglut/Makefile.am.jx mesa-demos-8.2.0/src/egl/eglut/Makefile.am
+--- mesa-demos-8.2.0/src/egl/eglut/Makefile.am.jx	2012-06-25 11:34:58.000000000 -0400
++++ mesa-demos-8.2.0/src/egl/eglut/Makefile.am	2016-04-27 13:36:48.089527063 -0400
+@@ -33,17 +33,12 @@ if HAVE_WAYLAND
+ eglut_wayland = libeglut_wayland.la
+ endif
+ 
+-noinst_LTLIBRARIES = libeglut_screen.la $(eglut_x11) $(eglut_wayland)
++noinst_LTLIBRARIES = $(eglut_x11) $(eglut_wayland)
+ endif
+ 
+-libeglut_screen_la_SOURCES = \
+-	eglut.c \
+-	eglut.h \
+-	eglutint.h \
+-	eglut_screen.c
+-
+ libeglut_x11_la_SOURCES = \
+ 	eglut.c \
++	eglut.h \
+ 	eglutint.h \
+ 	eglut_x11.c
+ libeglut_x11_la_CFLAGS = $(X11_CFLAGS) $(EGL_CFLAGS)
+@@ -52,6 +47,7 @@ libeglut_x11_la_LIBADD = $(X11_LIBS) $(E
+ 
+ libeglut_wayland_la_SOURCES = \
+ 	eglut.c \
++	eglut.h \
+ 	eglutint.h \
+ 	eglut_wayland.c
+ 
+diff -up mesa-demos-8.2.0/src/egl/opengl/demo1.c.jx mesa-demos-8.2.0/src/egl/opengl/demo1.c
+diff -up mesa-demos-8.2.0/src/egl/opengl/demo2.c.jx mesa-demos-8.2.0/src/egl/opengl/demo2.c
+diff -up mesa-demos-8.2.0/src/egl/opengl/demo3.c.jx mesa-demos-8.2.0/src/egl/opengl/demo3.c
+diff -up mesa-demos-8.2.0/src/egl/opengl/eglinfo.c.jx mesa-demos-8.2.0/src/egl/opengl/eglinfo.c
+--- mesa-demos-8.2.0/src/egl/opengl/eglinfo.c.jx	2012-06-25 11:34:58.000000000 -0400
++++ mesa-demos-8.2.0/src/egl/opengl/eglinfo.c	2016-04-27 13:36:48.091527077 -0400
+@@ -93,10 +93,6 @@ PrintConfigs(EGLDisplay d)
+          strcat(surfString, "pb,");
+       if (surfaces & EGL_PIXMAP_BIT)
+          strcat(surfString, "pix,");
+-#ifdef EGL_MESA_screen_surface
+-      if (surfaces & EGL_SCREEN_BIT_MESA)
+-         strcat(surfString, "scrn,");
+-#endif
+       if (strlen(surfString) > 0)
+          surfString[strlen(surfString) - 1] = 0;
+ 
+@@ -117,45 +113,6 @@ PrintConfigs(EGLDisplay d)
+ }
+ 
+ 
+-/**
+- * Print table of all available configurations.
+- */
+-static void
+-PrintModes(EGLDisplay d)
+-{
+-#ifdef EGL_MESA_screen_surface
+-   const char *extensions = eglQueryString(d, EGL_EXTENSIONS);
+-   if (strstr(extensions, "EGL_MESA_screen_surface")) {
+-      EGLScreenMESA screens[MAX_SCREENS];
+-      EGLint numScreens = 1, scrn;
+-      EGLModeMESA modes[MAX_MODES];
+-
+-      eglGetScreensMESA(d, screens, MAX_SCREENS, &numScreens);
+-      printf("Number of Screens: %d\n\n", numScreens);
+-
+-      for (scrn = 0; scrn < numScreens; scrn++) {
+-         EGLint numModes, i;
+-
+-         eglGetModesMESA(d, screens[scrn], modes, MAX_MODES, &numModes);
+-
+-         printf("Screen %d Modes:\n", scrn);
+-         printf("  id  width height refresh  name\n");
+-         printf("-----------------------------------------\n");
+-         for (i = 0; i < numModes; i++) {
+-            EGLint id, w, h, r;
+-            const char *str;
+-            eglGetModeAttribMESA(d, modes[i], EGL_MODE_ID_MESA, &id);
+-            eglGetModeAttribMESA(d, modes[i], EGL_WIDTH, &w);
+-            eglGetModeAttribMESA(d, modes[i], EGL_HEIGHT, &h);
+-            eglGetModeAttribMESA(d, modes[i], EGL_REFRESH_RATE_MESA, &r);
+-            str = eglQueryModeStringMESA(d, modes[i]);
+-            printf("0x%02x %5d  %5d   %.3f  %s\n", id, w, h, r / 1000.0, str);
+-         }
+-      }
+-   }
+-#endif
+-}
+-
+ static void
+ PrintExtensions(EGLDisplay d)
+ {
+@@ -215,8 +172,6 @@ main(int argc, char *argv[])
+ 
+    PrintConfigs(d);
+ 
+-   PrintModes(d);
+-
+    eglTerminate(d);
+ 
+    return 0;
+diff -up mesa-demos-8.2.0/src/egl/opengles1/Makefile.am.jx mesa-demos-8.2.0/src/egl/opengles1/Makefile.am
+--- mesa-demos-8.2.0/src/egl/opengles1/Makefile.am.jx	2012-06-25 11:34:58.000000000 -0400
++++ mesa-demos-8.2.0/src/egl/opengles1/Makefile.am	2016-04-27 13:36:48.091527077 -0400
+@@ -41,19 +41,15 @@ if HAVE_GLESV1
+ noinst_PROGRAMS = \
+ 	bindtex \
+ 	clear \
+-	drawtex_screen \
+ 	drawtex_x11 \
+ 	eglfbdev \
+ 	es1_info \
+-	gears_screen \
+ 	gears_x11 \
+ 	msaa \
+ 	pbuffer\
+ 	render_tex \
+ 	texture_from_pixmap \
+-	torus_screen \
+ 	torus_x11 \
+-	tri_screen \
+ 	tri_x11 \
+ 	two_win
+ endif
+@@ -71,21 +67,11 @@ two_win_LDADD = $(X11_LIBS)
+ clear_LDADD = ../eglut/libeglut_x11.la $(EGL_LIBS) $(X11_LIBS)
+ clear_LDFLAGS =
+ 
+-drawtex_screen_SOURCES = drawtex.c
+-gears_screen_SOURCES = gears.c
+-torus_screen_SOURCES = torus.c
+-tri_screen_SOURCES = tri.c
+-
+ drawtex_x11_SOURCES = drawtex.c
+ gears_x11_SOURCES = gears.c
+ torus_x11_SOURCES = torus.c
+ tri_x11_SOURCES = tri.c
+ 
+-drawtex_screen_LDADD = ../eglut/libeglut_screen.la
+-gears_screen_LDADD = ../eglut/libeglut_screen.la
+-torus_screen_LDADD = ../eglut/libeglut_screen.la
+-tri_screen_LDADD = ../eglut/libeglut_screen.la
+-
+ drawtex_x11_LDADD = ../eglut/libeglut_x11.la
+ gears_x11_LDADD = ../eglut/libeglut_x11.la
+ torus_x11_LDADD = ../eglut/libeglut_x11.la
+diff -up mesa-demos-8.2.0/src/egl/opengles2/Makefile.am.jx mesa-demos-8.2.0/src/egl/opengles2/Makefile.am
+--- mesa-demos-8.2.0/src/egl/opengles2/Makefile.am.jx	2012-06-25 11:34:58.000000000 -0400
++++ mesa-demos-8.2.0/src/egl/opengles2/Makefile.am	2016-04-27 13:41:47.607616951 -0400
+@@ -37,7 +37,6 @@ if HAVE_EGL
+ if HAVE_GLESV2
+ bin_PROGRAMS = \
+ 	es2_info \
+-	es2gears_screen \
+ 	es2gears_x11 \
+ 	es2tri
+ if HAVE_WAYLAND
+@@ -49,12 +48,8 @@ endif
+ es2_info_LDADD = $(X11_LIBS)
+ es2tri_LDADD = $(X11_LIBS)
+ 
+-es2gears_screen_SOURCES = es2gears.c
+-
+ es2gears_x11_SOURCES = es2gears.c
+ 
+-es2gears_screen_LDADD = ../eglut/libeglut_screen.la
+-
+ es2gears_x11_LDADD = ../eglut/libeglut_x11.la
+ 
+ es2gears_wayland_SOURCES = es2gears.c
+diff -up mesa-demos-8.2.0/src/egl/opengl/Makefile.am.jx mesa-demos-8.2.0/src/egl/opengl/Makefile.am
+--- mesa-demos-8.2.0/src/egl/opengl/Makefile.am.jx	2012-06-25 11:34:58.000000000 -0400
++++ mesa-demos-8.2.0/src/egl/opengl/Makefile.am	2016-04-27 13:36:48.090527070 -0400
+@@ -51,20 +51,12 @@ endif
+ 
+ if HAVE_EGL
+ noinst_PROGRAMS = \
+-	demo1 \
+-	demo2 \
+-	demo3 \
+ 	eglinfo \
+-	eglgears_screen \
+-	egltri_screen \
+ 	peglgears \
+ 	$(EGL_DRM_DEMOS) \
+ 	$(EGL_X11_DEMOS)
+ endif
+ 
+-egltri_screen_SOURCES = egltri.c
+-eglgears_screen_SOURCES = eglgears.c
+-
+ egltri_x11_SOURCES = egltri.c
+ eglgears_x11_SOURCES = eglgears.c
+ 
+@@ -73,9 +65,6 @@ egltri_x11_LDFLAGS = $(AM_LDFLAGS) $(X11
+ xeglgears_LDFLAGS = $(AM_LDFLAGS) $(X11_LIBS)
+ xeglthreads_LDFLAGS = $(AM_LDFLAGS) $(X11_LIBS) -pthread
+ 
+-eglgears_screen_LDADD = ../eglut/libeglut_screen.la
+-egltri_screen_LDADD = ../eglut/libeglut_screen.la
+-
+ eglgears_x11_LDADD = ../eglut/libeglut_x11.la
+ egltri_x11_LDADD = ../eglut/libeglut_x11.la
+ 
+diff -up mesa-demos-8.2.0/src/egl/openvg/Makefile.am.jx mesa-demos-8.2.0/src/egl/openvg/Makefile.am
+--- mesa-demos-8.2.0/src/egl/openvg/Makefile.am.jx	2012-06-25 11:34:58.000000000 -0400
++++ mesa-demos-8.2.0/src/egl/openvg/Makefile.am	2016-04-27 13:36:48.092527084 -0400
+@@ -50,21 +50,13 @@ endif
+ if HAVE_EGL
+ if HAVE_VG
+ noinst_PROGRAMS = \
+-	lion_screen \
+-	sp_screen \
+ 	$(EGL_X11_DEMOS)
+ endif
+ endif
+ 
+-lion_screen_SOURCES = lion.c lion-render.c lion-render.h
+-sp_screen_SOURCES = sp.c
+-
+ lion_x11_SOURCES = lion.c lion-render.c lion-render.h
+ sp_x11_SOURCES = sp.c
+ 
+-lion_screen_LDADD = ../eglut/libeglut_screen.la
+-sp_screen_LDADD = ../eglut/libeglut_screen.la
+-
+ lion_x11_LDADD = ../eglut/libeglut_x11.la
+ sp_x11_LDADD = ../eglut/libeglut_x11.la
+ 
