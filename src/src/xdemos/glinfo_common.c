@@ -30,6 +30,18 @@
 #define snprintf _snprintf
 #endif
 
+#ifndef GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT
+#define GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT 0x00000001
+#endif
+#ifndef GL_CONTEXT_FLAG_DEBUG_BIT
+#define GL_CONTEXT_FLAG_DEBUG_BIT 0x00000002
+#endif
+#ifndef GL_CONTEXT_FLAG_ROBUST_ACCESS_BIT_ARB
+#define GL_CONTEXT_FLAG_ROBUST_ACCESS_BIT_ARB 0x00000004
+#endif
+#ifndef GL_CONTEXT_FLAG_NO_ERROR_BIT_KHR
+#define GL_CONTEXT_FLAG_NO_ERROR_BIT_KHR 0x00000008
+#endif
 
 /**
  * Return the GL enum name for a numeric value.
@@ -289,8 +301,12 @@ build_core_profile_extension_list(const struct ext_functions *extfuncs)
    totalLen = 0;
    for (i = 0; i < n; i++) {
       const char *ext = (const char *) extfuncs->GetStringi(GL_EXTENSIONS, i);
-      totalLen += strlen(ext) + 1; /* plus a space */
+      if (ext)
+          totalLen += strlen(ext) + 1; /* plus a space */
    }
+
+   if (!totalLen)
+     return NULL;
 
    buffer = malloc(totalLen + 1);
    if (buffer) {
@@ -573,6 +589,11 @@ print_limits(const char *extensions, const char *oglstring, int version,
       { 1, GL_TEXTURE_BUFFER_OFFSET_ALIGNMENT, "GL_TEXTURE_BUFFER_OFFSET_ALIGNMENT", "GL_ARB_texture_buffer_object" },
       { 1, GL_MAX_TEXTURE_BUFFER_SIZE, "GL_MAX_TEXTURE_BUFFER_SIZE", "GL_ARB_texture_buffer_object" },
 #endif
+#if defined (GL_ARB_texture_multisample)
+      { 1, GL_MAX_COLOR_TEXTURE_SAMPLES, "GL_MAX_COLOR_TEXTURE_SAMPLES", "GL_ARB_texture_multisample" },
+      { 1, GL_MAX_DEPTH_TEXTURE_SAMPLES, "GL_MAX_DEPTH_TEXTURE_SAMPLES", "GL_ARB_texture_multisample" },
+      { 1, GL_MAX_INTEGER_SAMPLES, "GL_MAX_INTEGER_SAMPLES", "GL_ARB_texture_multisample" },
+#endif
 #if defined (GL_ARB_uniform_buffer_object)
       { 1, GL_MAX_VERTEX_UNIFORM_BLOCKS, "GL_MAX_VERTEX_UNIFORM_BLOCKS", "GL_ARB_uniform_buffer_object" },
       { 1, GL_MAX_FRAGMENT_UNIFORM_BLOCKS, "GL_MAX_FRAGMENT_UNIFORM_BLOCKS", "GL_ARB_uniform_buffer_object" },
@@ -706,15 +727,140 @@ const char *
 context_flags_string(int mask)
 {
    const static struct bit_info bits[] = {
-#ifdef GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT
       { GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT, "forward-compatible" },
-#endif
-#ifdef GL_CONTEXT_FLAG_ROBUST_ACCESS_BIT_ARB
       { GL_CONTEXT_FLAG_ROBUST_ACCESS_BIT_ARB, "robust-access" },
-#endif
+      { GL_CONTEXT_FLAG_DEBUG_BIT, "debug" },
+      { GL_CONTEXT_FLAG_NO_ERROR_BIT_KHR, "no-error" },
    };
 
    return bitmask_to_string(bits, ELEMENTS(bits), mask);
 }
 
 
+static void
+usage(void)
+{
+#ifdef _WIN32
+   printf("Usage: wglinfo [-v] [-t] [-h] [-b] [-l] [-s]\n");
+#else
+   printf("Usage: glxinfo [-v] [-t] [-h] [-b] [-l] [-s] [-i] [-display <dname>]\n");
+   printf("\t-display <dname>: Print GLX visuals on specified server.\n");
+   printf("\t-i: Force an indirect rendering context.\n");
+#endif
+   printf("\t-B: brief output, print only the basics.\n");
+   printf("\t-v: Print visuals info in verbose form.\n");
+   printf("\t-t: Print verbose visual information table.\n");
+   printf("\t-h: This information.\n");
+   printf("\t-b: Find the 'best' visual and print its number.\n");
+   printf("\t-l: Print interesting OpenGL limits.\n");
+   printf("\t-s: Print a single extension per line.\n");
+}
+
+void
+parse_args(int argc, char *argv[], struct options *options)
+{
+   int i;
+
+   options->mode = Normal;
+   options->findBest = GL_FALSE;
+   options->limits = GL_FALSE;
+   options->singleLine = GL_FALSE;
+   options->displayName = NULL;
+   options->allowDirect = GL_TRUE;
+
+   for (i = 1; i < argc; i++) {
+#ifndef _WIN32
+      if (strcmp(argv[i], "-display") == 0 && i + 1 < argc) {
+         options->displayName = argv[i + 1];
+         i++;
+      }
+      else if (strcmp(argv[i], "-i") == 0) {
+         options->allowDirect = GL_FALSE;
+      }
+      else
+#endif
+      if (strcmp(argv[i], "-t") == 0) {
+         options->mode = Wide;
+      }
+      else if (strcmp(argv[i], "-v") == 0) {
+         options->mode = Verbose;
+      }
+      else if (strcmp(argv[i], "-B") == 0) {
+         options->mode = Brief;
+      }
+      else if (strcmp(argv[i], "-b") == 0) {
+         options->findBest = GL_TRUE;
+      }
+      else if (strcmp(argv[i], "-l") == 0) {
+         options->limits = GL_TRUE;
+      }
+      else if (strcmp(argv[i], "-h") == 0) {
+         usage();
+         exit(0);
+      }
+      else if(strcmp(argv[i], "-s") == 0) {
+         options->singleLine = GL_TRUE;
+      }
+      else {
+         printf("Unknown option `%s'\n", argv[i]);
+         usage();
+         exit(0);
+      }
+   }
+}
+
+static void
+query_ATI_meminfo(void)
+{
+#ifdef GL_ATI_meminfo
+    int i[4];
+
+    printf("Memory info (GL_ATI_meminfo):\n");
+
+    glGetIntegerv(GL_VBO_FREE_MEMORY_ATI, i);
+    printf("    VBO free memory - total: %u MB, largest block: %u MB\n",
+           i[0] / 1024, i[1] / 1024);
+    printf("    VBO free aux. memory - total: %u MB, largest block: %u MB\n",
+           i[2] / 1024, i[3] / 1024);
+
+    glGetIntegerv(GL_TEXTURE_FREE_MEMORY_ATI, i);
+    printf("    Texture free memory - total: %u MB, largest block: %u MB\n",
+           i[0] / 1024, i[1] / 1024);
+    printf("    Texture free aux. memory - total: %u MB, largest block: %u MB\n",
+           i[2] / 1024, i[3] / 1024);
+
+    glGetIntegerv(GL_RENDERBUFFER_FREE_MEMORY_ATI, i);
+    printf("    Renderbuffer free memory - total: %u MB, largest block: %u MB\n",
+           i[0] / 1024, i[1] / 1024);
+    printf("    Renderbuffer free aux. memory - total: %u MB, largest block: %u MB\n",
+           i[2] / 1024, i[3] / 1024);
+#endif
+}
+
+static void
+query_NVX_gpu_memory_info(void)
+{
+#ifdef GL_NVX_gpu_memory_info
+    int i;
+
+    printf("Memory info (GL_NVX_gpu_memory_info):\n");
+
+    glGetIntegerv(GL_GPU_MEMORY_INFO_DEDICATED_VIDMEM_NVX, &i);
+    printf("    Dedicated video memory: %u MB\n", i / 1024);
+
+    glGetIntegerv(GL_GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX, &i);
+    printf("    Total available memory: %u MB\n", i / 1024);
+
+    glGetIntegerv(GL_GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX, &i);
+    printf("    Currently available dedicated video memory: %u MB\n", i / 1024);
+#endif
+}
+
+void
+print_gpu_memory_info(const char *glExtensions)
+{
+   if (strstr(glExtensions, "GL_ATI_meminfo"))
+      query_ATI_meminfo();
+   if (strstr(glExtensions, "GL_NVX_gpu_memory_info"))
+      query_NVX_gpu_memory_info();
+}

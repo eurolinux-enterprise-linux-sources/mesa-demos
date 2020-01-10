@@ -1,34 +1,33 @@
-%global gitdate 20121218
-%global gitcommit 6eef979a5488dab01088412f88374b2ea9d615cd
+%global gitdate 20171027
+%global gitcommit 22bc355f1b324b6ea07e063b5f20be757ea7a8e5
 %global shortcommit %(c=%{gitcommit}; echo ${c:0:7})
-%global tarball mesa-demos
 %global xdriinfo xdriinfo-1.0.4
 %global demodir %{_libdir}/mesa
 
 Summary: Mesa demos
 Name: mesa-demos
-Version: 8.2.0
-Release: 3%{?dist}
+Version: 8.3.0
+Release: 10%{?dist}
 License: MIT
 Group: System Environment/Libraries
 URL: http://www.mesa3d.org
-# git clone http://anongit.freedesktop.org/git/mesa/demos.git
-# mv demos mesa-demos-6eef979a5488dab01088412f88374b2ea9d615cd
-# tar --exclude-vcs -cjf mesa-demos-6eef979.tar.bz2 mesa-demos-6eef979a5488dab01088412f88374b2ea9d615cd
-# Source0: %{tarball}-%{shortcommit}.tar.bz2
-Source0: ftp://ftp.freedesktop.org/pub/mesa/demos/8.2.0/%{tarball}-%{version}.tar.bz2
+#Source0: https://mesa.freedesktop.org/archive/demos/%{version}/%{name}-%{version}.tar.bz2
+Source0: mesa-demos-%{gitdate}.tar.bz2
 Source1: http://www.x.org/pub/individual/app/%{xdriinfo}.tar.bz2
 Source2: mesad-git-snapshot.sh
 # Patch pointblast/spriteblast out of the Makefile for legal reasons
 Patch0: mesa-demos-8.0.1-legal.patch
 Patch1: mesa-demos-as-needed.patch
-Patch2: 0001-egl-Remove-demos-using-EGL_MESA_screen_surface.patch
+# Fix xdriinfo not working with libglvnd
+Patch2: xdriinfo-1.0.4-glvnd.patch
 BuildRequires: pkgconfig autoconf automake libtool
 BuildRequires: freeglut-devel
-BuildRequires: libGL-devel
+BuildRequires: mesa-libGL-devel
+BuildRequires: mesa-libEGL-devel
+BuildRequires: mesa-libGLES-devel
+BuildRequires: mesa-libgbm-devel
 BuildRequires: libGLU-devel
 BuildRequires: glew-devel
-Group: Development/Libraries
 
 %description
 This package provides some demo applications for testing Mesa.
@@ -41,18 +40,28 @@ Provides: glxinfo glxinfo%{?__isa_bits}
 %description -n glx-utils
 The glx-utils package provides the glxinfo and glxgears utilities.
 
+%package -n egl-utils
+Summary: EGL utilities
+Group: Development/Libraries
+Provides: eglinfo es2_info
+
+%description -n egl-utils
+The egl-utils package provides the eglinfo and es2_info utilities.
+
 %prep
-%setup -q -n %{tarball}-%{version} -b1
+%setup -q -n %{name}-%{gitdate} -b1
 %patch0 -p1 -b .legal
 %patch1 -p1 -b .asneeded
-%patch2 -p1 -b .jx
+pushd ../%{xdriinfo}
+%patch2 -p1
+popd
 
 # These two files are distributable, but non-free (lack of permission to modify).
 rm -rf src/demos/pointblast.c
 rm -rf src/demos/spriteblast.c
 
 %build
-autoreconf -i
+autoreconf -vfi
 %configure --bindir=%{demodir} --with-system-data-files
 make %{?_smp_mflags}
 
@@ -74,6 +83,9 @@ install -m 0755 src/xdemos/glxinfo %{buildroot}%{_bindir}
 install -m 0755 src/xdemos/glxinfo %{buildroot}%{_bindir}/glxinfo%{?__isa_bits}
 %endif
 
+install -m 0755 src/egl/opengl/eglinfo %{buildroot}%{_bindir}
+install -m 0755 src/egl/opengles2/es2_info %{buildroot}%{_bindir}
+
 %check
 
 %files
@@ -86,10 +98,51 @@ install -m 0755 src/xdemos/glxinfo %{buildroot}%{_bindir}/glxinfo%{?__isa_bits}
 %{_bindir}/xdriinfo
 %{_datadir}/man/man1/xdriinfo.1*
 
+%files -n egl-utils
+%{_bindir}/eglinfo
+%{_bindir}/es2_info
+
 %changelog
-* Wed Apr 27 2016 Adam Jackson <ajax@redhat.com> - 8.2.0-3
-- Fix package build now that Mesa no longer pretends to advertise
-  EGL_MESA_screen_surface
+* Thu Feb 08 2018 Fedora Release Engineering <releng@fedoraproject.org> - 8.3.0-10
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_28_Mass_Rebuild
+
+* Fri Oct 27 2017 Adam Jackson <ajax@redhat.com> - 8.3.0-9
+- New git snapshot
+
+* Thu Aug 03 2017 Fedora Release Engineering <releng@fedoraproject.org> - 8.3.0-8
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_27_Binutils_Mass_Rebuild
+
+* Wed Jul 26 2017 Fedora Release Engineering <releng@fedoraproject.org> - 8.3.0-7
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_27_Mass_Rebuild
+
+* Mon Mar 13 2017 Hans de Goede <hdegoede@redhat.com> - 8.3.0-6
+- Fix xdriinfo not working with libglvnd (rhbz#1429894)
+
+* Fri Feb 10 2017 Fedora Release Engineering <releng@fedoraproject.org> - 8.3.0-5
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_26_Mass_Rebuild
+
+* Tue Jan 10 2017 Orion Poplawski <orion@cora.nwra.com> - 8.3.0-4
+- Rebuild for glew 2.0.0
+
+* Thu Feb 04 2016 Fedora Release Engineering <releng@fedoraproject.org> - 8.3.0-3
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_24_Mass_Rebuild
+
+* Thu Jan 14 2016 Adam Jackson <ajax@redhat.com> - 8.3.0-2
+- Rebuild for glew 1.13
+
+* Fri Dec 18 2015 Igor Gnatenko <i.gnatenko.brain@gmail.com> - 8.3.0-1
+- 8.3.0
+
+* Thu Dec 03 2015 Adam Jackson <ajax@redhat.com> 8.2.0-5
+- New git snap
+- Add EGL/GLES buildreqs and egl-utils subpackage
+
+* Wed Jun 17 2015 Fedora Release Engineering <rel-eng@lists.fedoraproject.org> - 8.2.0-4
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_23_Mass_Rebuild
+
+* Sat Feb 21 2015 Till Maas <opensource@till.name> - 8.2.0-3
+- Rebuilt for Fedora 23 Change
+  https://fedoraproject.org/wiki/Changes/Harden_all_packages_with_position-independent_code
 
 * Sun Aug 17 2014 Fedora Release Engineering <rel-eng@lists.fedoraproject.org> - 8.2.0-2
 - Rebuilt for https://fedoraproject.org/wiki/Fedora_21_22_Mass_Rebuild
