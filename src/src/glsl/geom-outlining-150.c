@@ -23,6 +23,7 @@
 static GLint WinWidth = 500, WinHeight = 500;
 static GLint Win = 0;
 static GLuint VertShader, GeomShader, FragShader, Program;
+static GLuint vao, vbo;
 static GLboolean Anim = GL_TRUE;
 static int uViewportSize = -1, uModelViewProj = -1, uColor = -1;
 
@@ -112,11 +113,6 @@ mat_multiply(GLfloat product[16], const GLfloat a[16], const GLfloat b[16])
 static void
 Redisplay(void)
 {
-   static const GLfloat verts[3][2] = {
-      { -1, -1 },
-      {  1, -1 },
-      {  0,  1 }
-   };
    GLfloat rot[4][4];
    GLfloat trans[16], mvp[16];
 
@@ -131,8 +127,6 @@ Redisplay(void)
    glUniformMatrix4fv(uModelViewProj, 1, GL_FALSE, (float *) mvp);
 
    /* Draw */
-   glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, verts);
-   glEnableVertexAttribArray(0);
    glDrawArrays(GL_TRIANGLES, 0, 3);
 
    glutSwapBuffers();
@@ -217,6 +211,8 @@ CleanUp(void)
    glDeleteShader(VertShader);
    glDeleteShader(GeomShader);
    glDeleteProgram(Program);
+   glDeleteVertexArrays(1, &vao);
+   glDeleteBuffers(1, &vbo);
    glutDestroyWindow(Win);
 }
 
@@ -260,7 +256,8 @@ Init(void)
       "} \n";
    static const char *geomShaderText =
       "#version 150 \n"
-      "#extension GL_ARB_geometry_shader4: enable \n"
+      "layout(triangles) in; \n"
+      "layout(triangle_strip, max_vertices = 3) out; \n"
       "uniform vec2 ViewportSize; \n"
       "out vec2 Vert0, Vert1, Vert2; \n"
       "\n"
@@ -275,11 +272,11 @@ Init(void)
       "   Vert0 = vpxform(gl_in[0].gl_Position); \n"
       "   Vert1 = vpxform(gl_in[1].gl_Position); \n"
       "   Vert2 = vpxform(gl_in[2].gl_Position); \n"
-      "   gl_Position = gl_PositionIn[0]; \n"
+      "   gl_Position = gl_in[0].gl_Position; \n"
       "   EmitVertex(); \n"
-      "   gl_Position = gl_PositionIn[1]; \n"
+      "   gl_Position = gl_in[1].gl_Position; \n"
       "   EmitVertex(); \n"
-      "   gl_Position = gl_PositionIn[2]; \n"
+      "   gl_Position = gl_in[2].gl_Position; \n"
       "   EmitVertex(); \n"
       "} \n";
    static const char *fragShaderText =
@@ -304,19 +301,23 @@ Init(void)
       "   float m = min(d0, min(d1, d2)); \n"
       "   FragColor = Color * smoothstep(0.0, LINE_WIDTH, m); \n"
       "} \n";
+   static const GLfloat verts[3][2] = {
+      { -1, -1 },
+      {  1, -1 },
+      {  0,  1 }
+   };
 
    if (!ShadersSupported())
       exit(1);
 
-   version = glGetString(GL_VERSION);
-   if (version[0] * 10 + version[2] < 32) {
+   if (!GLEW_VERSION_3_2) {
       fprintf(stderr, "Sorry, OpenGL 3.2 or later required.\n");
       exit(1);
    }
 
    VertShader = CompileShaderText(GL_VERTEX_SHADER, vertShaderText);
    FragShader = CompileShaderText(GL_FRAGMENT_SHADER, fragShaderText);
-   GeomShader = CompileShaderText(GL_GEOMETRY_SHADER_ARB, geomShaderText);
+   GeomShader = CompileShaderText(GL_GEOMETRY_SHADER, geomShaderText);
 
    Program = LinkShaders3(VertShader, GeomShader, FragShader);
    assert(Program);
@@ -325,18 +326,8 @@ Init(void)
    glBindAttribLocation(Program, 0, "Vertex");
    glBindFragDataLocation(Program, 0, "FragColor");
 
-   /*
-    * The geometry shader will receive and emit triangles.
-    */
-   glProgramParameteriARB(Program, GL_GEOMETRY_INPUT_TYPE_ARB,
-                          GL_TRIANGLES);
-   glProgramParameteriARB(Program, GL_GEOMETRY_OUTPUT_TYPE_ARB,
-                          GL_TRIANGLE_STRIP);
-   glProgramParameteriARB(Program,GL_GEOMETRY_VERTICES_OUT_ARB, 3);
-   CheckError(__LINE__);
-
    /* relink */
-   glLinkProgramARB(Program);
+   glLinkProgram(Program);
 
    assert(glIsProgram(Program));
    assert(glIsShader(FragShader));
@@ -351,6 +342,16 @@ Init(void)
 
    glUniform4fv(uColor, 1, Orange);
 
+   glGenBuffers(1, &vbo);
+   glBindBuffer(GL_ARRAY_BUFFER, vbo);
+   glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
+
+   glGenVertexArrays(1, &vao);
+   glBindVertexArray(vao);
+
+   glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
+   glEnableVertexAttribArray(0);
+
    glClearColor(0.3f, 0.3f, 0.3f, 0.0f);
    glEnable(GL_DEPTH_TEST);
 
@@ -363,9 +364,22 @@ main(int argc, char *argv[])
 {
    glutInit(&argc, argv);
    glutInitWindowSize(WinWidth, WinHeight);
+#ifdef HAVE_FREEGLUT
+   glutInitContextVersion(3, 2);
+   glutInitContextProfile(GLUT_CORE_PROFILE);
    glutInitDisplayMode(GLUT_RGB | GLUT_DEPTH | GLUT_DOUBLE);
+#elif defined __APPLE__
+   glutInitDisplayMode(GLUT_3_2_CORE_PROFILE | GLUT_RGB | GLUT_DEPTH | GLUT_DOUBLE);
+#else
+   glutInitDisplayMode(GLUT_RGB | GLUT_DEPTH | GLUT_DOUBLE);
+#endif
    Win = glutCreateWindow(argv[0]);
+   /* glewInit requires glewExperimentel set to true for core profiles.
+    * Depending on the glew version it also generates a GL_INVALID_ENUM.
+    */
+   glewExperimental = GL_TRUE;
    glewInit();
+   glGetError();
    glutReshapeFunc(Reshape);
    glutKeyboardFunc(Key);
    glutDisplayFunc(Redisplay);

@@ -77,6 +77,11 @@ xrotfontdemo_SOURCES = \
 	xuserotfont.c \
 	xuserotfont.h
 
+glxinfo_SOURCES = \
+	glxinfo.c \
+	glinfo_common.c \
+	glinfo_common.h
+
 glthreads_LDADD = -lpthread
 glxgears_fbconfig_LDADD = libpbutil.la
 pbdemo_LDADD = libpbutil.la

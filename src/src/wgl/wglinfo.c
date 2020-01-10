@@ -39,6 +39,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include "glinfo_common.h"
 
 
 typedef enum
@@ -48,379 +49,6 @@ typedef enum
    Verbose
 } InfoMode;
 
-
-/*
- * qsort callback for string comparison.
- */
-static int
-compare_string_ptr(const void *p1, const void *p2)
-{
-   return strcmp(* (char * const *) p1, * (char * const *) p2);
-}
-
-
-/*
- * Print a list of extensions, with word-wrapping.
- */
-static void
-print_extension_list(const char *ext, GLboolean singleLine)
-{
-   char **extensions;
-   int num_extensions;
-   const char *indentString = "    ";
-   const int indent = 4;
-   const int max = 79;
-   int width, i, j, k;
-
-   if (!ext || !ext[0])
-      return;
-
-   /* count the number of extensions, ignoring successive spaces */
-   num_extensions = 0;
-   j = 1;
-   do {
-      if ((ext[j] == ' ' || ext[j] == 0) && ext[j - 1] != ' ') {
-         ++num_extensions;
-      }
-   } while(ext[j++]);
-
-   /* copy individual extensions to an array */
-   extensions = malloc(num_extensions * sizeof *extensions);
-   if (!extensions) {
-      fprintf(stderr, "Error: malloc() failed\n");
-      exit(1);
-   }
-   i = j = k = 0;
-   while (1) {
-      if (ext[j] == ' ' || ext[j] == 0) {
-         /* found end of an extension name */
-         const int len = j - i;
-
-         if (len) {
-            assert(k < num_extensions);
-
-            extensions[k] = malloc(len + 1);
-            if (!extensions[k]) {
-               fprintf(stderr, "Error: malloc() failed\n");
-               exit(1);
-            }
-
-            memcpy(extensions[k], ext + i, len);
-            extensions[k][len] = 0;
-
-            ++k;
-         };
-
-         i += len + 1;
-
-         if (ext[j] == 0) {
-            break;
-         }
-      }
-      j++;
-   }
-   assert(k == num_extensions);
-
-   /* sort extensions alphabetically */
-   qsort(extensions, num_extensions, sizeof extensions[0], compare_string_ptr);
-
-   /* print the extensions */
-   width = indent;
-   printf("%s", indentString);
-   for (k = 0; k < num_extensions; ++k) {
-      const int len = strlen(extensions[k]);
-      if ((!singleLine) && (width + len > max)) {
-         /* start a new line */
-         printf("\n");
-         width = indent;
-         printf("%s", indentString);
-      }
-      /* print the extension name */
-      printf("%s", extensions[k]);
-
-      /* either we're all done, or we'll continue with next extension */
-      width += len + 1;
-
-      if (singleLine) {
-         printf("\n");
-         width = indent;
-         printf("%s", indentString);
-      }
-      else {
-         printf(", ");
-         width += 2;
-      }
-   }
-   printf("\n");
-
-   for (k = 0; k < num_extensions; ++k) {
-      free(extensions[k]);
-   }
-   free(extensions);
-}
-
-
-/**
- * Print interesting limits for vertex/fragment programs.
- */
-static void
-print_program_limits(GLenum target)
-{
-#if defined(GL_ARB_vertex_program) || defined(GL_ARB_fragment_program)
-   struct token_name {
-      GLenum token;
-      const char *name;
-   };
-   static const struct token_name common_limits[] = {
-      { GL_MAX_PROGRAM_INSTRUCTIONS_ARB, "GL_MAX_PROGRAM_INSTRUCTIONS_ARB" },
-      { GL_MAX_PROGRAM_NATIVE_INSTRUCTIONS_ARB, "GL_MAX_PROGRAM_NATIVE_INSTRUCTIONS_ARB" },
-      { GL_MAX_PROGRAM_TEMPORARIES_ARB, "GL_MAX_PROGRAM_TEMPORARIES_ARB" },
-      { GL_MAX_PROGRAM_NATIVE_TEMPORARIES_ARB, "GL_MAX_PROGRAM_NATIVE_TEMPORARIES_ARB" },
-      { GL_MAX_PROGRAM_PARAMETERS_ARB, "GL_MAX_PROGRAM_PARAMETERS_ARB" },
-      { GL_MAX_PROGRAM_NATIVE_PARAMETERS_ARB, "GL_MAX_PROGRAM_NATIVE_PARAMETERS_ARB" },
-      { GL_MAX_PROGRAM_ATTRIBS_ARB, "GL_MAX_PROGRAM_ATTRIBS_ARB" },
-      { GL_MAX_PROGRAM_NATIVE_ATTRIBS_ARB, "GL_MAX_PROGRAM_NATIVE_ATTRIBS_ARB" },
-      { GL_MAX_PROGRAM_ADDRESS_REGISTERS_ARB, "GL_MAX_PROGRAM_ADDRESS_REGISTERS_ARB" },
-      { GL_MAX_PROGRAM_NATIVE_ADDRESS_REGISTERS_ARB, "GL_MAX_PROGRAM_NATIVE_ADDRESS_REGISTERS_ARB" },
-      { GL_MAX_PROGRAM_LOCAL_PARAMETERS_ARB, "GL_MAX_PROGRAM_LOCAL_PARAMETERS_ARB" },
-      { GL_MAX_PROGRAM_ENV_PARAMETERS_ARB, "GL_MAX_PROGRAM_ENV_PARAMETERS_ARB" },
-      { (GLenum) 0, NULL }
-   };
-   static const struct token_name fragment_limits[] = {
-      { GL_MAX_PROGRAM_ALU_INSTRUCTIONS_ARB, "GL_MAX_PROGRAM_ALU_INSTRUCTIONS_ARB" },
-      { GL_MAX_PROGRAM_TEX_INSTRUCTIONS_ARB, "GL_MAX_PROGRAM_TEX_INSTRUCTIONS_ARB" },
-      { GL_MAX_PROGRAM_TEX_INDIRECTIONS_ARB, "GL_MAX_PROGRAM_TEX_INDIRECTIONS_ARB" },
-      { GL_MAX_PROGRAM_NATIVE_ALU_INSTRUCTIONS_ARB, "GL_MAX_PROGRAM_NATIVE_ALU_INSTRUCTIONS_ARB" },
-      { GL_MAX_PROGRAM_NATIVE_TEX_INSTRUCTIONS_ARB, "GL_MAX_PROGRAM_NATIVE_TEX_INSTRUCTIONS_ARB" },
-      { GL_MAX_PROGRAM_NATIVE_TEX_INDIRECTIONS_ARB, "GL_MAX_PROGRAM_NATIVE_TEX_INDIRECTIONS_ARB" },
-      { (GLenum) 0, NULL }
-   };
-
-   PFNGLGETPROGRAMIVARBPROC GetProgramivARB_func = (PFNGLGETPROGRAMIVARBPROC)
-      wglGetProcAddress("glGetProgramivARB");
-
-   GLint max[1];
-   int i;
-
-   if (target == GL_VERTEX_PROGRAM_ARB) {
-      printf("    GL_VERTEX_PROGRAM_ARB:\n");
-   }
-   else if (target == GL_FRAGMENT_PROGRAM_ARB) {
-      printf("    GL_FRAGMENT_PROGRAM_ARB:\n");
-   }
-   else {
-      return; /* something's wrong */
-   }
-
-   for (i = 0; common_limits[i].token; i++) {
-      GetProgramivARB_func(target, common_limits[i].token, max);
-      if (glGetError() == GL_NO_ERROR) {
-         printf("        %s = %d\n", common_limits[i].name, max[0]);
-      }
-   }
-   if (target == GL_FRAGMENT_PROGRAM_ARB) {
-      for (i = 0; fragment_limits[i].token; i++) {
-         GetProgramivARB_func(target, fragment_limits[i].token, max);
-         if (glGetError() == GL_NO_ERROR) {
-            printf("        %s = %d\n", fragment_limits[i].name, max[0]);
-         }
-      }
-   }
-#endif /* GL_ARB_vertex_program / GL_ARB_fragment_program */
-}
-
-
-/**
- * Print interesting limits for vertex/fragment shaders.
- */
-static void
-print_shader_limits(GLenum target)
-{
-   struct token_name {
-      GLenum token;
-      const char *name;
-   };
-#if defined(GL_ARB_vertex_shader)
-   static const struct token_name vertex_limits[] = {
-      { GL_MAX_VERTEX_UNIFORM_COMPONENTS_ARB, "GL_MAX_VERTEX_UNIFORM_COMPONENTS_ARB" },
-      { GL_MAX_VARYING_FLOATS_ARB, "GL_MAX_VARYING_FLOATS_ARB" },
-      { GL_MAX_VERTEX_ATTRIBS_ARB, "GL_MAX_VERTEX_ATTRIBS_ARB" },
-      { GL_MAX_TEXTURE_IMAGE_UNITS_ARB, "GL_MAX_TEXTURE_IMAGE_UNITS_ARB" },
-      { GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS_ARB, "GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS_ARB" },
-      { GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS_ARB, "GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS_ARB" },
-      { GL_MAX_TEXTURE_COORDS_ARB, "GL_MAX_TEXTURE_COORDS_ARB" },
-      { (GLenum) 0, NULL }
-   };
-#endif
-#if defined(GL_ARB_fragment_shader)
-   static const struct token_name fragment_limits[] = {
-      { GL_MAX_FRAGMENT_UNIFORM_COMPONENTS_ARB, "GL_MAX_FRAGMENT_UNIFORM_COMPONENTS_ARB" },
-      { GL_MAX_TEXTURE_COORDS_ARB, "GL_MAX_TEXTURE_COORDS_ARB" },
-      { GL_MAX_TEXTURE_IMAGE_UNITS_ARB, "GL_MAX_TEXTURE_IMAGE_UNITS_ARB" },
-      { (GLenum) 0, NULL }
-   };
-#endif
-   GLint max[1];
-   int i;
-
-#if defined(GL_ARB_vertex_shader)
-   if (target == GL_VERTEX_SHADER_ARB) {
-      printf("    GL_VERTEX_SHADER_ARB:\n");
-      for (i = 0; vertex_limits[i].token; i++) {
-         glGetIntegerv(vertex_limits[i].token, max);
-         if (glGetError() == GL_NO_ERROR) {
-            printf("        %s = %d\n", vertex_limits[i].name, max[0]);
-         }
-      }
-   }
-#endif
-#if defined(GL_ARB_fragment_shader)
-   if (target == GL_FRAGMENT_SHADER_ARB) {
-      printf("    GL_FRAGMENT_SHADER_ARB:\n");
-      for (i = 0; fragment_limits[i].token; i++) {
-         glGetIntegerv(fragment_limits[i].token, max);
-         if (glGetError() == GL_NO_ERROR) {
-            printf("        %s = %d\n", fragment_limits[i].name, max[0]);
-         }
-      }
-   }
-#endif
-}
-
-
-/** Is extension 'ext' supported? */
-static int
-extension_supported(const char *ext, const char *extensionsList)
-{
-   const char *p = strstr(extensionsList, ext);
-   if (p) {
-      /* check that next char is a space or end of string */
-      int extLen = strlen(ext);
-      if (p[extLen] == 0 || p[extLen] == ' ')
-         return 1;
-   }
-   return 0;
-}
-
-
-/**
- * Print interesting OpenGL implementation limits.
- */
-static void
-print_limits(const char *extensions)
-{
-   struct token_name {
-      GLuint count;
-      GLenum token;
-      const char *name;
-      const char *extension;
-   };
-   static const struct token_name limits[] = {
-      { 1, GL_MAX_ATTRIB_STACK_DEPTH, "GL_MAX_ATTRIB_STACK_DEPTH", NULL },
-      { 1, GL_MAX_CLIENT_ATTRIB_STACK_DEPTH, "GL_MAX_CLIENT_ATTRIB_STACK_DEPTH", NULL },
-      { 1, GL_MAX_CLIP_PLANES, "GL_MAX_CLIP_PLANES", NULL },
-      { 1, GL_MAX_COLOR_MATRIX_STACK_DEPTH, "GL_MAX_COLOR_MATRIX_STACK_DEPTH", "GL_ARB_imaging" },
-      { 1, GL_MAX_ELEMENTS_VERTICES, "GL_MAX_ELEMENTS_VERTICES", NULL },
-      { 1, GL_MAX_ELEMENTS_INDICES, "GL_MAX_ELEMENTS_INDICES", NULL },
-      { 1, GL_MAX_EVAL_ORDER, "GL_MAX_EVAL_ORDER", NULL },
-      { 1, GL_MAX_LIGHTS, "GL_MAX_LIGHTS", NULL },
-      { 1, GL_MAX_LIST_NESTING, "GL_MAX_LIST_NESTING", NULL },
-      { 1, GL_MAX_MODELVIEW_STACK_DEPTH, "GL_MAX_MODELVIEW_STACK_DEPTH", NULL },
-      { 1, GL_MAX_NAME_STACK_DEPTH, "GL_MAX_NAME_STACK_DEPTH", NULL },
-      { 1, GL_MAX_PIXEL_MAP_TABLE, "GL_MAX_PIXEL_MAP_TABLE", NULL },
-      { 1, GL_MAX_PROJECTION_STACK_DEPTH, "GL_MAX_PROJECTION_STACK_DEPTH", NULL },
-      { 1, GL_MAX_TEXTURE_STACK_DEPTH, "GL_MAX_TEXTURE_STACK_DEPTH", NULL },
-      { 1, GL_MAX_TEXTURE_SIZE, "GL_MAX_TEXTURE_SIZE", NULL },
-      { 1, GL_MAX_3D_TEXTURE_SIZE, "GL_MAX_3D_TEXTURE_SIZE", NULL },
-      { 2, GL_MAX_VIEWPORT_DIMS, "GL_MAX_VIEWPORT_DIMS", NULL },
-      { 2, GL_ALIASED_LINE_WIDTH_RANGE, "GL_ALIASED_LINE_WIDTH_RANGE", NULL },
-      { 2, GL_SMOOTH_LINE_WIDTH_RANGE, "GL_SMOOTH_LINE_WIDTH_RANGE", NULL },
-      { 2, GL_ALIASED_POINT_SIZE_RANGE, "GL_ALIASED_POINT_SIZE_RANGE", NULL },
-      { 2, GL_SMOOTH_POINT_SIZE_RANGE, "GL_SMOOTH_POINT_SIZE_RANGE", NULL },
-#if defined(GL_ARB_texture_cube_map)
-      { 1, GL_MAX_CUBE_MAP_TEXTURE_SIZE_ARB, "GL_MAX_CUBE_MAP_TEXTURE_SIZE_ARB", "GL_ARB_texture_cube_map" },
-#endif
-#if defined(GL_NV_texture_rectangle)
-      { 1, GL_MAX_RECTANGLE_TEXTURE_SIZE_NV, "GL_MAX_RECTANGLE_TEXTURE_SIZE_NV", "GL_NV_texture_rectangle" },
-#endif
-#if defined(GL_ARB_texture_compression)
-      { 1, GL_NUM_COMPRESSED_TEXTURE_FORMATS_ARB, "GL_NUM_COMPRESSED_TEXTURE_FORMATS_ARB", "GL_ARB_texture_compression" },
-#endif
-#if defined(GL_ARB_multitexture)
-      { 1, GL_MAX_TEXTURE_UNITS_ARB, "GL_MAX_TEXTURE_UNITS_ARB", "GL_ARB_multitexture" },
-#endif
-#if defined(GL_EXT_texture_lod_bias)
-      { 1, GL_MAX_TEXTURE_LOD_BIAS_EXT, "GL_MAX_TEXTURE_LOD_BIAS_EXT", "GL_EXT_texture_lod_bias" },
-#endif
-#if defined(GL_EXT_texture_filter_anisotropic)
-      { 1, GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, "GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT", "GL_EXT_texture_filter_anisotropic" },
-#endif
-#if defined(GL_ARB_draw_buffers)
-      { 1, GL_MAX_DRAW_BUFFERS_ARB, "GL_MAX_DRAW_BUFFERS_ARB", "GL_ARB_draw_buffers" },
-#endif
-#if defined(GL_ARB_blend_func_extended)
-      { 1, GL_MAX_DUAL_SOURCE_DRAW_BUFFERS, "GL_MAX_DUAL_SOURCE_DRAW_BUFFERS", "GL_ARB_blend_func_extended" },
-#endif
-#if defined (GL_ARB_framebuffer_object)
-      { 1, GL_MAX_RENDERBUFFER_SIZE, "GL_MAX_RENDERBUFFER_SIZE", "GL_ARB_framebuffer_object" },
-      { 1, GL_MAX_COLOR_ATTACHMENTS, "GL_MAX_COLOR_ATTACHMENTS", "GL_ARB_framebuffer_object" },
-      { 1, GL_MAX_SAMPLES, "GL_MAX_SAMPLES", "GL_ARB_framebuffer_object" },
-#endif
-      { 0, (GLenum) 0, NULL, NULL }
-   };
-   GLint i, max[2];
-
-   printf("OpenGL limits:\n");
-   for (i = 0; limits[i].count; i++) {
-      if (!limits[i].extension ||
-          extension_supported(limits[i].extension, extensions)) {
-         glGetIntegerv(limits[i].token, max);
-         if (glGetError() == GL_NO_ERROR) {
-            if (limits[i].count == 1)
-               printf("    %s = %d\n", limits[i].name, max[0]);
-            else /* XXX fix if we ever query something with more than 2 values */
-               printf("    %s = %d, %d\n", limits[i].name, max[0], max[1]);
-         }
-      }
-   }
-
-   /* these don't fit into the above mechanism, unfortunately */
-#if defined(GL_EXT_convolution)
-   if (extension_supported("GL_ARB_imaging", extensions)) {
-      PFNGLGETCONVOLUTIONPARAMETERIVEXTPROC glGetConvolutionParameterivEXT_func = 
-         (PFNGLGETCONVOLUTIONPARAMETERIVEXTPROC)wglGetProcAddress("glGetConvolutionParameterivEXT");
-      if(glGetConvolutionParameterivEXT_func) {
-         /* these don't fit into the above mechanism, unfortunately */
-         glGetConvolutionParameterivEXT_func(GL_CONVOLUTION_2D, GL_MAX_CONVOLUTION_WIDTH, max);
-         glGetConvolutionParameterivEXT_func(GL_CONVOLUTION_2D, GL_MAX_CONVOLUTION_HEIGHT, max+1);
-         if (glGetError() == GL_NONE) {
-            printf("    GL_MAX_CONVOLUTION_WIDTH/HEIGHT = %d, %d\n", max[0], max[1]);
-         }
-      }
-   }
-#endif
-
-#if defined(GL_ARB_vertex_program)
-   if (extension_supported("GL_ARB_vertex_program", extensions)) {
-      print_program_limits(GL_VERTEX_PROGRAM_ARB);
-   }
-#endif
-#if defined(GL_ARB_fragment_program)
-   if (extension_supported("GL_ARB_fragment_program", extensions)) {
-      print_program_limits(GL_FRAGMENT_PROGRAM_ARB);
-   }
-#endif
-#if defined(GL_ARB_vertex_shader)
-   if (extension_supported("GL_ARB_vertex_shader", extensions)) {
-      print_shader_limits(GL_VERTEX_SHADER_ARB);
-   }
-#endif
-#if defined(GL_ARB_fragment_shader)
-   if (extension_supported("GL_ARB_fragment_shader", extensions)) {
-      print_shader_limits(GL_FRAGMENT_SHADER_ARB);
-   }
-#endif
-}
 
 
 static LRESULT CALLBACK
@@ -450,6 +78,8 @@ print_screen_info(HDC _hdc, GLboolean limits, GLboolean singleLine)
    int visinfo;
    HDC hdc;
    PIXELFORMATDESCRIPTOR pfd;
+   int version;
+   const char *oglString = "OpenGL";
 
    memset(&wc, 0, sizeof wc);
    wc.hbrBackground = (HBRUSH) (COLOR_BTNFACE + 1);
@@ -473,13 +103,13 @@ print_screen_info(HDC _hdc, GLboolean limits, GLboolean singleLine)
                         wc.hInstance,
                         NULL);
    if (!win) {
-      fprintf(stderr, "Couldn't create window");
+      fprintf(stderr, "Couldn't create window\n");
       return;
    }
 
    hdc = GetDC(win);
    if (!hdc) {
-      fprintf(stderr, "Couldn't obtain HDC");
+      fprintf(stderr, "Couldn't obtain HDC\n");
       return;
    }
 
@@ -520,6 +150,7 @@ print_screen_info(HDC _hdc, GLboolean limits, GLboolean singleLine)
       const char *glRenderer = (const char *) glGetString(GL_RENDERER);
       const char *glVersion = (const char *) glGetString(GL_VERSION);
       const char *glExtensions = (const char *) glGetString(GL_EXTENSIONS);
+      struct ext_functions extfuncs;
       
 #if defined(WGL_ARB_extensions_string)
       if (wglGetExtensionsStringARB_func) {
@@ -540,10 +171,20 @@ print_screen_info(HDC _hdc, GLboolean limits, GLboolean singleLine)
       }
 #endif
 
+      extfuncs.GetProgramivARB = (PFNGLGETPROGRAMIVARBPROC)
+         wglGetProcAddress("glGetProgramivARB");
+      extfuncs.GetStringi = (PFNGLGETSTRINGIPROC)
+         wglGetProcAddress("glGetStringi");
+      extfuncs.GetConvolutionParameteriv = (GETCONVOLUTIONPARAMETERIVPROC)
+         wglGetProcAddress("glGetConvolutionParameteriv");
+
+      version = (glVersion[0] - '0') * 10 + (glVersion[2] - '0');
+
       printf("OpenGL extensions:\n");
       print_extension_list(glExtensions, singleLine);
-      if (limits)
-         print_limits(glExtensions);
+      if (limits) {
+         print_limits(glExtensions, oglString, version, &extfuncs);
+      }
    }
    else {
       fprintf(stderr, "Error: wglMakeCurrent failed\n");
@@ -595,7 +236,7 @@ static void
 print_visual_attribs_short_header(void)
 {
  printf("   visual   x  bf lv rg d st colorbuffer ax dp st accumbuffer  ms  cav\n");
- printf(" id gen nat sp sz l  ci b ro  r  g  b  a bf th cl  r  g  b  a ns b eat\n");
+ printf(" id gen win sp sz l  ci b ro  r  g  b  a bf th cl  r  g  b  a ns b eat\n");
  printf("-----------------------------------------------------------------------\n");
 }
 
@@ -605,7 +246,7 @@ print_visual_attribs_short(int iPixelFormat, LPPIXELFORMATDESCRIPTOR ppfd)
 {
    char *caveat = "None";
 
-   printf("0x%02x %2d %2d %2d %2d %2d %c%c %c  %c %2d %2d %2d %2d %2d %2d %2d",
+   printf("0x%02x %2d  %2d %2d %2d %2d %c%c %c  %c %2d %2d %2d %2d %2d %2d %2d",
           iPixelFormat,
           ppfd->dwFlags & PFD_GENERIC_FORMAT ? 1 : 0,
           ppfd->dwFlags & PFD_DRAW_TO_WINDOW ? 1 : 0,

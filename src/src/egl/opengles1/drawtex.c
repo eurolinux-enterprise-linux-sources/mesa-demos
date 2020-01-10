@@ -16,6 +16,7 @@
 #include <string.h>
 #include <GLES/gl.h>
 #include <GLES/glext.h>
+#include <EGL/egl.h>
 
 #include "eglut.h"
 
@@ -25,13 +26,14 @@ static GLfloat width = 200, height = 200;
 static GLboolean animate = GL_FALSE;
 static int win;
 
+static PFNGLDRAWTEXFOESPROC glDrawTexfOES_func = NULL;
 
 static void
 draw(void)
 {
    glClear(GL_COLOR_BUFFER_BIT);
 
-   glDrawTexfOES(view_posx, view_posy, 0.0, width, height);
+   glDrawTexfOES_func(view_posx, view_posy, 0.0, width, height);
 }
 
 
@@ -125,6 +127,13 @@ init(void)
 
    if (!strstr(ext, "GL_OES_draw_texture")) {
       fprintf(stderr, "Sorry, this program requires GL_OES_draw_texture\n");
+      exit(1);
+   }
+
+   glDrawTexfOES_func = (PFNGLDRAWTEXFOESPROC) eglGetProcAddress("glDrawTexfOES");
+
+   if (!glDrawTexfOES_func) {
+      fprintf(stderr, "Sorry, failed to resolve glDrawTexfOES function\n");
       exit(1);
    }
 

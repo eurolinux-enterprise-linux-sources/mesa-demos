@@ -7,8 +7,8 @@
 
 Summary: Mesa demos
 Name: mesa-demos
-Version: 8.1.0
-Release: 5%{?dist}
+Version: 8.2.0
+Release: 2%{?dist}
 License: MIT
 Group: System Environment/Libraries
 URL: http://www.mesa3d.org
@@ -16,7 +16,7 @@ URL: http://www.mesa3d.org
 # mv demos mesa-demos-6eef979a5488dab01088412f88374b2ea9d615cd
 # tar --exclude-vcs -cjf mesa-demos-6eef979.tar.bz2 mesa-demos-6eef979a5488dab01088412f88374b2ea9d615cd
 # Source0: %{tarball}-%{shortcommit}.tar.bz2
-Source0: ftp://ftp.freedesktop.org/pub/mesa/demos/8.1.0/%{tarball}-%{version}.tar.bz2
+Source0: ftp://ftp.freedesktop.org/pub/mesa/demos/8.2.0/%{tarball}-%{version}.tar.bz2
 Source1: http://www.x.org/pub/individual/app/%{xdriinfo}.tar.bz2
 Source2: mesad-git-snapshot.sh
 # Patch pointblast/spriteblast out of the Makefile for legal reasons
@@ -85,11 +85,20 @@ install -m 0755 src/xdemos/glxinfo %{buildroot}%{_bindir}/glxinfo%{?__isa_bits}
 %{_datadir}/man/man1/xdriinfo.1*
 
 %changelog
-* Fri Jan 24 2014 Daniel Mach <dmach@redhat.com> - 8.1.0-5
-- Mass rebuild 2014-01-24
+* Sun Aug 17 2014 Fedora Release Engineering <rel-eng@lists.fedoraproject.org> - 8.2.0-2
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_21_22_Mass_Rebuild
 
-* Fri Dec 27 2013 Daniel Mach <dmach@redhat.com> - 8.1.0-4
-- Mass rebuild 2013-12-27
+* Sat Jul 05 2014 Igor Gnatenko <i.gnatenko.brain@gmail.com> - 8.2.0-1
+- 8.2.0 upstream release
+
+* Sat Jun 07 2014 Fedora Release Engineering <rel-eng@lists.fedoraproject.org> - 8.1.0-6
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_21_Mass_Rebuild
+
+* Sun Nov 17 2013 Dave Airlie <airlied@redhat.com> - 8.1.0-5
+- rebuilt for glew 1.10
+
+* Sat Aug 03 2013 Fedora Release Engineering <rel-eng@lists.fedoraproject.org> - 8.1.0-4
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_20_Mass_Rebuild
 
 * Wed Mar 27 2013 Adam Jackson <ajax@redhat.com> 8.1.0-3
 - Build with --as-needed so glxinfo doesn't needlessly drag in GLEW
